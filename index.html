@@ -1,0 +1,165 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Resize Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/pica@9.0.1/dist/pica.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        input, button {
+            margin: 10px 0;
+            padding: 8px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px 20px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        canvas {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+        .preview {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Image Resize Tool</h1>
+        <input type="file" id="imageInput" accept="image/*">
+        <div>
+            <label>Width: <input type="number" id="widthInput" placeholder="New width in pixels"></label>
+            <label>Height: <input type="number" id="heightInput" placeholder="New height in pixels"></label>
+        </div>
+        <button onclick="resizeImage()">Resize Image</button>
+        <div class="preview">
+            <h3>Original Image:</h3>
+            <img id="originalImage" style="max-width: 100%;">
+            <h3>Resized Image:</h3>
+            <canvas id="resizedCanvas"></canvas>
+            <br>
+            <a id="downloadLink" style="display: none;">Download Resized Image</a>
+        </div>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const widthInput = document.getElementById('widthInput');
+        const heightInput = document.getElementById('heightInput');
+        const originalImage = document.getElementById('originalImage');
+        const resizedCanvas = document.getElementById('resizedCanvas');
+        const downloadLink = document.getElementById('downloadLink');
+        const picaInstance = pica();
+
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    originalImage.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        async function resizeImage() {
+            const file = imageInput.files[0];
+            if (!file) {
+                alert('Please select an image first!');
+                return;
+            }
+
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+            if (!width || !height) {
+                alert('Please enter valid width and height!');
+                return;
+            }
+
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            await img.decode();
+
+            resizedCanvas.width = width;
+            resizedCanvas.height = height;
+
+            try {
+                await picaInstance.resize(img, resizedCanvas, {
+                    quality: 3,
+                    unsharpAmount: 80,
+                    unsharpRadius: 0.6,
+                    unsharpThreshold: 2
+                });
+
+                downloadLink.href = resizedCanvas.toDataURL('image/jpeg');
+                downloadLink.download = 'resized_image.jpg';
+                downloadLink.style.display = 'block';
+                downloadLink.textContent = 'Download Resized Image';
+            } catch (err) {
+                alert('Error resizing image: ' + err.message);
+            } finally {
+                URL.revokeObjectURL(img.src);
+            }
+        }
+    </script>
+</body>
+</html>
